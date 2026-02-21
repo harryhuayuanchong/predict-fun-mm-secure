@@ -18,6 +18,7 @@ const SECRET_FIELDS = new Set([
   'PREDICT_WS_API_KEY',
   'ALERT_WEBHOOK_URL',
   'RPC_URL',
+  'DASHBOARD_API_TOKEN',
 ]);
 
 /** Patterns that look like secrets in arbitrary text */

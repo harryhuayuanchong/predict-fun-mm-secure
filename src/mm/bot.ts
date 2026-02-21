@@ -12,6 +12,7 @@ import { MarketSelector, type MarketWithBook } from './market-selector.js';
 import { Quoter, type InventoryState, type Quote } from './quoter.js';
 import type { CircuitBreaker, RiskManager, RateLimiter } from '../risk/circuit-breaker.js';
 import type { OrderExecutor } from '../execution/order-executor.js';
+import { botEmitter } from '../events/emitter.js';
 
 export interface MMBotDeps {
   api: PredictApiClient;
@@ -29,6 +30,9 @@ export class MarketMakerBot {
   private openOrders = new Map<string, Order[]>();
   private inventory = new Map<string, InventoryState>();
   private running = false;
+  private cycleCount = 0;
+  /** Latest quotes per tokenId, exposed for the dashboard server */
+  latestQuotes = new Map<string, { market: Market; quote: Quote }>();
 
   constructor(deps: MMBotDeps) {
     this.deps = deps;
@@ -49,6 +53,12 @@ export class MarketMakerBot {
     }
 
     this.running = true;
+    botEmitter.emitBot('mm:status', {
+      running: true,
+      dryRun: config.DRY_RUN,
+      tradingEnabled: config.ENABLE_TRADING,
+      cycleCount: this.cycleCount,
+    });
 
     while (this.running) {
       try {
@@ -79,6 +89,12 @@ export class MarketMakerBot {
 
   stop(): void {
     this.running = false;
+    botEmitter.emitBot('mm:status', {
+      running: false,
+      dryRun: this.deps.config.DRY_RUN,
+      tradingEnabled: this.deps.config.ENABLE_TRADING,
+      cycleCount: this.cycleCount,
+    });
   }
 
   private async runCycle(): Promise<void> {
@@ -99,7 +115,14 @@ export class MarketMakerBot {
       await this.processMarket(market, orderbook);
     }
 
+    this.cycleCount++;
     circuitBreaker.recordSuccess();
+
+    botEmitter.emitBot('mm:cycle', {
+      timestamp: Date.now(),
+      marketsProcessed: markets.length,
+      cycleCount: this.cycleCount,
+    });
   }
 
   private async processMarket(market: Market, orderbook: Orderbook): Promise<void> {
@@ -133,6 +156,24 @@ export class MarketMakerBot {
       logger.debug(`No valid quote for ${tokenId}`);
       return;
     }
+
+    // Store latest quote and emit for dashboard
+    this.latestQuotes.set(tokenId, { market, quote });
+    botEmitter.emitBot('mm:quote', {
+      tokenId,
+      question: market.question,
+      outcome: market.outcome,
+      marketId: market.marketId,
+      bidPrice: quote.bidPrice,
+      askPrice: quote.askPrice,
+      bidShares: quote.bidShares,
+      askShares: quote.askShares,
+      microPrice: quote.microPrice,
+      spread: quote.spread,
+      bestBid: orderbook.bestBid ?? 0,
+      bestAsk: orderbook.bestAsk ?? 0,
+      volume24h: market.volume24h,
+    });
 
     // Check existing orders — cancel stale ones
     const existing = this.openOrders.get(tokenId) || [];

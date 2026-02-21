@@ -68,6 +68,10 @@ export const EnvSchema = z.object({
   // Alerts
   ALERT_WEBHOOK_URL: z.string().optional().default(''),
 
+  // Dashboard
+  DASHBOARD_PORT: z.coerce.number().int().min(1024).default(3001),
+  DASHBOARD_API_TOKEN: z.string().optional().default(''),
+
   // Logging
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 

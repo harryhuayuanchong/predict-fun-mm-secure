@@ -9,6 +9,7 @@
 import type { PredictApiClient, Market } from '../api/client.js';
 import type { EnvConfig } from '../config/schema.js';
 import { logger } from '../utils/logger.js';
+import { botEmitter } from '../events/emitter.js';
 
 export interface OrderResult {
   success: boolean;
@@ -70,7 +71,18 @@ export class OrderExecutor {
         `[DRY RUN] ${side} ${payload.shares} shares @ ${payload.price} on ${market.tokenId}`
       );
       this.orderCount++;
-      return { success: true, orderHash: `dry-${this.orderCount}` };
+      const dryHash = `dry-${this.orderCount}`;
+      botEmitter.emitBot('mm:order:placed', {
+        timestamp: Date.now(),
+        tokenId: market.tokenId,
+        question: market.question,
+        side,
+        price: payload.price,
+        shares: payload.shares,
+        orderHash: dryHash,
+        dryRun: true,
+      });
+      return { success: true, orderHash: dryHash };
     }
 
     // Live order
@@ -85,6 +97,16 @@ export class OrderExecutor {
         `Placed ${side} ${payload.shares} shares @ ${payload.price} on ${market.tokenId}`
       );
       this.orderCount++;
+      botEmitter.emitBot('mm:order:placed', {
+        timestamp: Date.now(),
+        tokenId: market.tokenId,
+        question: market.question,
+        side,
+        price: payload.price,
+        shares: payload.shares,
+        orderHash: hash || `live-${this.orderCount}`,
+        dryRun: false,
+      });
       return { success: true, orderHash: hash };
     } catch (err) {
       logger.error(`Order placement failed for ${market.tokenId}:`, err);
@@ -97,12 +119,24 @@ export class OrderExecutor {
 
     if (this.config.DRY_RUN || !this.config.ENABLE_TRADING) {
       logger.info(`[DRY RUN] Cancel ${orderHashes.length} orders`);
+      botEmitter.emitBot('mm:order:cancelled', {
+        timestamp: Date.now(),
+        tokenId: '',
+        orderHashes,
+        reason: 'dry-run cancel',
+      });
       return true;
     }
 
     try {
       await this.api.cancelOrders(orderHashes);
       logger.info(`Cancelled ${orderHashes.length} orders`);
+      botEmitter.emitBot('mm:order:cancelled', {
+        timestamp: Date.now(),
+        tokenId: '',
+        orderHashes,
+        reason: 'stale order',
+      });
       return true;
     } catch (err) {
       logger.error('Cancel orders failed:', err);

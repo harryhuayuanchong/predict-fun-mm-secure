@@ -8,6 +8,7 @@
     "build": "tsc",
     "start:mm": "node --import tsx src/cli/start-mm.ts",
     "start:arb": "node --import tsx src/cli/start-arb.ts",
+    "start:dashboard": "node --import tsx src/cli/start-dashboard.ts",
     "auth:jwt": "node --import tsx src/cli/auth-jwt.ts",
     "smoke": "node --import tsx src/cli/smoke-test.ts",
     "test": "node --import tsx --test tests/*.test.ts",

@@ -16,6 +16,7 @@ import {
 } from './scanner.js';
 import type { RiskManager, RateLimiter } from '../risk/circuit-breaker.js';
 import type { OrderExecutor } from '../execution/order-executor.js';
+import { botEmitter } from '../events/emitter.js';
 
 export interface ArbBotDeps {
   api: PredictApiClient;
@@ -109,12 +110,26 @@ export class ArbitrageBot {
       (a, b) => b.edge - a.edge
     );
 
+    botEmitter.emitBot('arb:scan', {
+      timestamp: Date.now(),
+      opportunitiesFound: allOpps.length,
+      marketsScanned: subset.length,
+    });
+
     if (allOpps.length > 0) {
       logger.info(`Found ${allOpps.length} arb opportunities`);
       for (const opp of allOpps.slice(0, 5)) {
         logger.info(
           `  ${opp.type}: edge=${(opp.edge * 100).toFixed(2)}% profit=$${opp.estimatedProfit.toFixed(2)} | ${opp.details}`
         );
+        botEmitter.emitBot('arb:opportunity', {
+          type: opp.type,
+          edge: opp.edge,
+          shares: opp.shares,
+          estimatedProfit: opp.estimatedProfit,
+          details: opp.details,
+          marketIds: opp.markets.map((m) => m.tokenId),
+        });
       }
     }
 

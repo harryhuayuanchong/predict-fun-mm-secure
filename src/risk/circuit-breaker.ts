@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../utils/logger.js';
+import { botEmitter } from '../events/emitter.js';
 
 export interface CircuitBreakerConfig {
   maxFailures: number;
@@ -43,6 +44,11 @@ export class CircuitBreaker {
         `Circuit breaker OPEN: ${this.failures.length} failures in ${this.config.windowMs}ms. ` +
           `Cooldown until ${new Date(this.openUntil).toISOString()}`
       );
+      botEmitter.emitBot('risk:circuit_breaker', {
+        isOpen: true,
+        failureCount: this.failures.length,
+        cooldownUntil: this.openUntil,
+      });
     }
   }
 
@@ -74,11 +80,13 @@ export class RiskManager {
   killSwitch(): void {
     this.killed = true;
     logger.error('KILL SWITCH ACTIVATED - all trading halted');
+    botEmitter.emitBot('risk:kill_switch', { active: true, reason: 'manual' });
   }
 
   resetKillSwitch(): void {
     this.killed = false;
     logger.info('Kill switch reset');
+    botEmitter.emitBot('risk:kill_switch', { active: false });
   }
 
   checkDailyLoss(): boolean {
@@ -95,6 +103,11 @@ export class RiskManager {
   recordPnl(amount: number): void {
     this.maybeResetDay();
     this.dailyPnl += amount;
+
+    botEmitter.emitBot('risk:pnl', {
+      timestamp: Date.now(),
+      dailyPnl: this.dailyPnl,
+    });
 
     if (this.dailyPnl <= -this.config.maxDailyLossUsd) {
       logger.error(
