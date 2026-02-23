@@ -9,7 +9,7 @@ import type { EnvConfig } from '../config/schema.js';
 import { logger } from '../utils/logger.js';
 import { sendAlert } from '../utils/alert.js';
 import { MarketSelector, type MarketWithBook } from './market-selector.js';
-import { Quoter, type InventoryState, type Quote } from './quoter.js';
+import { Quoter, type InventoryState, type Quote, type QuoterConfig } from './quoter.js';
 import type { CircuitBreaker, RiskManager, RateLimiter } from '../risk/circuit-breaker.js';
 import type { OrderExecutor } from '../execution/order-executor.js';
 import { botEmitter } from '../events/emitter.js';
@@ -47,6 +47,10 @@ export class MarketMakerBot {
 
     logger.info('Market maker starting');
     logger.info(`Dry run: ${config.DRY_RUN}, Trading: ${config.ENABLE_TRADING}`);
+
+    if (config.PP_MODE) {
+      logger.warn('PP MODE ACTIVE — aggressive top-of-book quoting enabled');
+    }
 
     if (!config.ENABLE_TRADING) {
       logger.warn('ENABLE_TRADING=false — orders will not be submitted');
@@ -131,20 +135,7 @@ export class MarketMakerBot {
 
     // Get or create quoter for this market
     if (!this.quoters.has(tokenId)) {
-      this.quoters.set(
-        tokenId,
-        new Quoter({
-          baseSpread: config.SPREAD,
-          minSpread: config.MIN_SPREAD,
-          maxSpread: config.MAX_SPREAD,
-          orderSizeUsd: config.ORDER_SIZE_USD,
-          maxPositionUsd: config.MAX_POSITION_USD,
-          inventorySkewFactor: 0.15,
-          volEmaAlpha: 0.2,
-          touchBufferBps: 10,
-          orderDepthUsage: 0.3,
-        })
-      );
+      this.quoters.set(tokenId, new Quoter(this.buildQuoterConfig()));
     }
 
     const quoter = this.quoters.get(tokenId)!;
@@ -155,6 +146,13 @@ export class MarketMakerBot {
     if (!quote) {
       logger.debug(`No valid quote for ${tokenId}`);
       return;
+    }
+
+    // PP mode: enforce minimum shares on both sides for point qualification
+    if (config.PP_MODE) {
+      const minShares = Math.max(1, Math.floor(config.PP_MIN_ORDER_SIZE_USD / quote.bidPrice));
+      if (quote.bidShares < minShares) quote.bidShares = minShares;
+      if (quote.askShares < minShares) quote.askShares = minShares;
     }
 
     // Store latest quote and emit for dashboard
@@ -193,6 +191,38 @@ export class MarketMakerBot {
         await executor.placeLimitOrder(market, 'SELL', quote.askPrice, quote.askShares);
       }
     }
+  }
+
+  private buildQuoterConfig(): QuoterConfig {
+    const { config } = this.deps;
+
+    if (config.PP_MODE) {
+      // PP-optimized: aggressive top-of-book, tight spread, both sides always
+      return {
+        baseSpread: config.MIN_SPREAD,
+        minSpread: config.MIN_SPREAD,
+        maxSpread: config.MAX_SPREAD,
+        orderSizeUsd: Math.max(config.ORDER_SIZE_USD, config.PP_MIN_ORDER_SIZE_USD),
+        maxPositionUsd: config.MAX_POSITION_USD,
+        inventorySkewFactor: 0.05,
+        volEmaAlpha: 0.1,
+        touchBufferBps: 0,
+        orderDepthUsage: 0.5,
+      };
+    }
+
+    // Conservative (default)
+    return {
+      baseSpread: config.SPREAD,
+      minSpread: config.MIN_SPREAD,
+      maxSpread: config.MAX_SPREAD,
+      orderSizeUsd: config.ORDER_SIZE_USD,
+      maxPositionUsd: config.MAX_POSITION_USD,
+      inventorySkewFactor: 0.15,
+      volEmaAlpha: 0.2,
+      touchBufferBps: 10,
+      orderDepthUsage: 0.3,
+    };
   }
 
   private async cancelStaleOrders(

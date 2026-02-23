@@ -69,6 +69,8 @@ export function printConfig(config: EnvConfig): void {
     ['Dry Run', config.DRY_RUN],
     ['Trading Enabled', config.ENABLE_TRADING],
     ['Auto Confirm', config.AUTO_CONFIRM],
+    ['PP Mode', config.PP_MODE],
+    ['PP Min Order Size', `$${config.PP_MIN_ORDER_SIZE_USD}`],
     ['Max Daily Loss', `$${config.MAX_DAILY_LOSS_USD}`],
     ['Max Position', `$${config.MAX_POSITION_USD}`],
     ['Max Single Order', `$${config.MAX_SINGLE_ORDER_USD}`],

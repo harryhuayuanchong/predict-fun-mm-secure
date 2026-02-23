@@ -36,6 +36,11 @@ export const EnvSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  PP_MODE: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  PP_MIN_ORDER_SIZE_USD: z.coerce.number().min(0).default(20),
   MAX_DAILY_LOSS_USD: z.coerce.number().positive().default(200),
   MAX_POSITION_USD: z.coerce.number().positive().default(100),
   MAX_SINGLE_ORDER_USD: z.coerce.number().positive().default(50),

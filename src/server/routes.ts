@@ -39,6 +39,7 @@ const getStatus: Handler = async (_req, res, deps) => {
           running: deps.mmBotRunning,
           dryRun: deps.config.DRY_RUN,
           tradingEnabled: deps.config.ENABLE_TRADING,
+          ppMode: deps.config.PP_MODE,
         }
       : null,
     arb: deps.arbBot
